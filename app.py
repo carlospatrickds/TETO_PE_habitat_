@@ -3,7 +3,7 @@ import pandas as pd
 
 # --- Configuração inicial ---
 st.set_page_config(page_title="Habitat Orçamentos", layout="wide")
-st.title("📊 Gestão de Orçamentos - TETO Habitat")
+st.title("📊 Gestão de Orçamentos - Habitat")
 
 # --- Banco de dados temporário ---
 if "projetos" not in st.session_state:
