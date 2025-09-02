@@ -5,7 +5,7 @@ import os
 
 # --- Configuração inicial ---
 st.set_page_config(page_title="Habitat Orçamentos", layout="wide")
-st.title("📊 Gestão de Orçamentos - TETO Habitat")
+st.title("📊 Gestão de Orçamentos - Habitat")
 
 DATA_FILE = "projetos.json"
 
