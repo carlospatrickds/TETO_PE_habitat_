@@ -1,13 +1,28 @@
 import streamlit as st
 import pandas as pd
+import json
+import os
 
 # --- Configuração inicial ---
 st.set_page_config(page_title="Habitat Orçamentos", layout="wide")
-st.title("📊 Gestão de Orçamentos - Habitat")
+st.title("📊 Gestão de Orçamentos - TETO Habitat")
 
-# --- Banco de dados temporário ---
+DATA_FILE = "projetos.json"
+
+# --- Funções auxiliares ---
+def salvar_dados():
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(st.session_state.projetos, f, ensure_ascii=False, indent=4)
+
+def carregar_dados():
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+# --- Carregar dados salvos ---
 if "projetos" not in st.session_state:
-    st.session_state.projetos = []
+    st.session_state.projetos = carregar_dados()
 
 # --- Cadastro de projeto ---
 st.header("➕ Cadastrar novo projeto")
@@ -28,6 +43,7 @@ if submitted:
         "orcamento": []
     }
     st.session_state.projetos.append(projeto)
+    salvar_dados()
     st.success(f"✅ Projeto '{nome}' adicionado com sucesso!")
 
 # --- Listar projetos cadastrados ---
@@ -55,6 +71,7 @@ else:
                     "preco_unitario": preco,
                     "total": qtd * preco
                 })
+                salvar_dados()
                 st.success(f"Item '{item}' adicionado!")
 
             # --- Mostrar orçamento ---
@@ -63,8 +80,8 @@ else:
                 st.dataframe(df, use_container_width=True)
                 st.write(f"💰 **Total do projeto: R$ {df['total'].sum():,.2f}**")
 
-                # --- Exportar ---
-                csv = df.to_csv(index=False).encode("utf-8")
+                # --- Exportar (CSV compatível com Excel PT-BR) ---
+                csv = df.to_csv(index=False, sep=";").encode("utf-8-sig")
                 st.download_button(
                     label="📥 Baixar orçamento (CSV)",
                     data=csv,
@@ -73,4 +90,3 @@ else:
                 )
             else:
                 st.info("Nenhum item de orçamento adicionado ainda.")
-
