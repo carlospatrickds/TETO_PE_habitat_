@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Extrator de Dados Previdenciários</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1, h2, h3 {
+            color: #2c3e50;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #3498db;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .input-section, .output-section {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        textarea {
+            width: 100%;
+            height: 200px;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+            resize: vertical;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        .success {
+            color: #27ae60;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        .error {
+            color: #e74c3c;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        .copy-btn {
+            background-color: #2ecc71;
+            margin-left: 10px;
+        }
+        .copy-btn:hover {
+            background-color: #27ae60;
+        }
+    </style>
+</head>
+<body>
+    <h1>Extrator de Dados Previdenciários</h1>
+    
+    <div class="container">
+        <div class="input-section">
+            <h2>Cole os dados do sistema abaixo:</h2>
+            <textarea id="inputData" placeholder="Cole aqui os dados copiados do sistema..."></textarea>
+            <button id="processBtn">Processar Dados</button>
+            <p id="message"></p>
+        </div>
+        
+        <div class="output-section">
+            <h2>Dados Extraídos</h2>
+            <div id="output">
+                <p>Os dados processados aparecerão aqui.</p>
+            </div>
+            <button id="copyBtn" class="copy-btn" style="display: none;">Copiar para Excel</button>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('processBtn').addEventListener('click', function() {
+            const inputData = document.getElementById('inputData').value;
+            const messageElement = document.getElementById('message');
+            const outputElement = document.getElementById('output');
+            const copyButton = document.getElementById('copyBtn');
+            
+            if (!inputData.trim()) {
+                messageElement.textContent = 'Por favor, cole os dados no campo acima.';
+                messageElement.className = 'error';
+                return;
+            }
+            
+            try {
+                const result = processData(inputData);
+                outputElement.innerHTML = result.table;
+                copyButton.style.display = 'block';
+                messageElement.textContent = 'Dados processados com sucesso!';
+                messageElement.className = 'success';
+                
+                // Atualizar o evento de cópia
+                copyButton.onclick = function() {
+                    copyToClipboard(result.csv);
+                    alert('Dados copiados para a área de transferência! Cole no Excel.');
+                };
+            } catch (error) {
+                messageElement.textContent = 'Erro ao processar os dados: ' + error.message;
+                messageElement.className = 'error';
+            }
+        });
+        
+        function processData(data) {
+            // Extrair informações específicas usando expressões regulares
+            const extractValue = (pattern, defaultValue = 'Não encontrado') => {
+                const match = data.match(pattern);
+                return match ? match[1].trim() : defaultValue;
+            };
+            
+            // Dados do Benefício
+            const situacao = extractValue(/Situação:\s*([^\n]+)/);
+            const especie = extractValue(/Espécie:\s*([^\n]+)/);
+            const olMantenedor = extractValue(/OL Mantenedor:\s*([^\n]+)/);
+            const dib = extractValue(/DIB:\s*([^\n]+)/);
+            
+            // Dados do Titular
+            const nb = extractValue(/NB:.*?(\d+\s*\/\s*\d+\.\d+\.\d+-\d+)/);
+            const nome = extractValue(/Nome do Recebedor \(Titular \/ RL\):\s*([^\n]+)/);
+            const cpf = extractValue(/CPF:\s*([^\n]+)/);
+            const nit = extractValue(/NIT:\s*([^\n]+)/);
+            
+            // Criar tabela HTML com os resultados
+            const tableHTML = `
+                <h3>Dados do Benefício</h3>
+                <table>
+                    <tr>
+                        <th>Campo</th>
+                        <th>Valor</th>
+                    </tr>
+                    <tr>
+                        <td>NB</td>
+                        <td>${nb}</td>
+                    </tr>
+                    <tr>
+                        <td>Situação</td>
+                        <td>${situacao}</td>
+                    </tr>
+                    <tr>
+                        <td>Espécie</td>
+                        <td>${especie}</td>
+                    </tr>
+                    <tr>
+                        <td>OL Mantenedor</td>
+                        <td>${olMantenedor}</td>
+                    </tr>
+                    <tr>
+                        <td>DIB</td>
+                        <td>${dib}</td>
+                    </tr>
+                </table>
+                
+                <h3>Dados do Titular</h3>
+                <table>
+                    <tr>
+                        <th>Campo</th>
+                        <th>Valor</th>
+                    </tr>
+                    <tr>
+                        <td>Nome</td>
+                        <td>${nome}</td>
+                    </tr>
+                    <tr>
+                        <td>CPF</td>
+                        <td>${cpf}</td>
+                    </tr>
+                    <tr>
+                        <td>NIT</td>
+                        <td>${nit}</td>
+                    </tr>
+                </table>
+            `;
+            
+            // Criar versão CSV para exportação
+            const csv = `
+Dados do Benefício
+Campo,Valor
+NB,${nb}
+Situação,${situacao}
+Espécie,${especie}
+OL Mantenedor,${olMantenedor}
+DIB,${dib}
+
+Dados do Titular
+Campo,Valor
+Nome,${nome}
+CPF,${cpf}
+NIT,${nit}
+            `.trim();
+            
+            return { table: tableHTML, csv: csv };
+        }
+        
+        function copyToClipboard(text) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+        }
+    </script>
+</body>
+</html>
