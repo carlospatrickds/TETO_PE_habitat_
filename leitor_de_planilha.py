@@ -4,6 +4,7 @@ import numpy as np
 from datetime import datetime
 import io
 import unicodedata
+import re
 
 # Configuração da página
 st.set_page_config(
@@ -66,9 +67,35 @@ def encontrar_valores_similares(valor_busca, lista_valores, limite=5):
     
     return similares
 
+# Função para buscar colunas por número ou texto
+def buscar_colunas_rapido(termo_busca, colunas_com_labels, mostrar_numeros=True):
+    """Busca colunas por número (ex: '12') ou por texto (ex: 'comunidade')"""
+    if not termo_busca:
+        return colunas_com_labels
+    
+    resultados = []
+    termo_busca = termo_busca.strip().lower()
+    
+    for coluna, label, idx in colunas_com_labels:
+        # Buscar por número da coluna (ex: "12" encontra "Col.12")
+        if mostrar_numeros and termo_busca.isdigit():
+            numero_coluna = idx + 1
+            if str(numero_coluna) == termo_busca or f"col.{termo_busca.zfill(2)}" in label.lower():
+                resultados.append((coluna, label, idx))
+        
+        # Buscar por texto no nome da coluna
+        elif termo_busca in normalizar_texto(coluna):
+            resultados.append((coluna, label, idx))
+        
+        # Buscar por texto no label completo
+        elif termo_busca in normalizar_texto(label):
+            resultados.append((coluna, label, idx))
+    
+    return resultados
+
 # Guia de instruções
 with st.expander("📚 GUIA DE INSTRUÇÕES - Como usar esta ferramenta", expanded=False):
-    tab_instrucoes, tab_exemplos, tab_dicas = st.tabs(["📖 Instruções", "🎯 Exemplos Práticos", "💡 Dicas Avançadas"])
+    tab_instrucoes, tab_exemplos, tab_dicas, tab_busca = st.tabs(["📖 Instruções", "🎯 Exemplos Práticos", "💡 Dicas Avançadas", "🔎 Busca Rápida"])
     
     with tab_instrucoes:
         st.markdown("""
@@ -156,6 +183,35 @@ with st.expander("📚 GUIA DE INSTRUÇÕES - Como usar esta ferramenta", expand
         - **Busca não funciona**: Tente termos mais simples
         - **Exportação falha**: Tente formato CSV
         """)
+    
+    with tab_busca:
+        st.markdown("""
+        ## 🔎 **SISTEMA DE BUSCA RÁPIDA**
+        
+        ### **🔢 BUSCAR POR NÚMERO DA COLUNA**
+        ```
+        Digite: "12"
+        Retorna: "Col.12 │ Nome da Coluna │ 📊 amostra..."
+        ```
+        
+        ### **📝 BUSCAR POR TEXTO**
+        ```
+        Digite: "comunidade"
+        Retorna: Todas as colunas com "comunidade" no nome
+        ```
+        
+        ### **🎯 BUSCAR POR CONTEÚDO**
+        ```
+        Digite: "água"
+        Retorna: Colunas que contenham "água" nos valores
+        ```
+        
+        ### **💡 EXEMPLOS PRÁTICOS:**
+        - **"25"** → Mostra a coluna número 25
+        - **"nome"** → Encontra colunas como "Nome", "Nome completo", etc.
+        - **"data"** → Encontra "Data nascimento", "Data cadastro", etc.
+        - **"rua"** → Encontra "Endereço", "Rua", "Logradouro", etc.
+        """)
 
 # Upload do arquivo
 uploaded_file = st.file_uploader("📤 Envie sua planilha Excel", type=["xlsx"])
@@ -192,11 +248,35 @@ if uploaded_file:
             label = criar_label_coluna(coluna, df[coluna], mostrar_numeros_colunas, i)
             colunas_com_labels.append((coluna, label, i))  # Agora inclui o índice
         
-        # Selecionar colunas para filtro
+        # BUSCA RÁPIDA POR COLUNAS
+        st.sidebar.markdown("### 🔎 Busca Rápida de Colunas")
+        busca_rapida = st.sidebar.text_input(
+            "Buscar coluna por número ou texto:",
+            placeholder="Ex: 12, comunidade, água...",
+            help="Digite o número da coluna (ex: '12') ou texto para buscar"
+        )
+        
+        # Aplicar busca rápida se houver termo
+        if busca_rapida:
+            colunas_filtradas = buscar_colunas_rapido(busca_rapida, colunas_com_labels, mostrar_numeros_colunas)
+            if colunas_filtradas:
+                st.sidebar.success(f"🎯 {len(colunas_filtradas)} coluna(s) encontrada(s)")
+                
+                # Mostrar resultados da busca
+                with st.sidebar.expander("📋 Resultados da Busca", expanded=True):
+                    for coluna, label, idx in colunas_filtradas:
+                        st.write(f"**{label}**")
+            else:
+                st.sidebar.warning("❌ Nenhuma coluna encontrada")
+                colunas_filtradas = colunas_com_labels
+        else:
+            colunas_filtradas = colunas_com_labels
+        
+        # Selecionar colunas para filtro (usando lista filtrada ou completa)
         colunas_filtro_selecionadas = st.sidebar.multiselect(
             "Selecione as colunas para filtrar:",
-            options=[label for _, label, _ in colunas_com_labels],
-            default=[label for _, label, _ in colunas_com_labels[:3]] if len(colunas_com_labels) >= 3 else [label for _, label, _ in colunas_com_labels],
+            options=[label for _, label, _ in colunas_filtradas],
+            default=[label for _, label, _ in colunas_filtradas[:3]] if len(colunas_filtradas) >= 3 else [label for _, label, _ in colunas_filtradas],
             help="Cada coluna selecionada mostrará um filtro específico abaixo",
             max_selections=6
         )
@@ -502,7 +582,7 @@ if uploaded_file:
                     csv_selecionado = df_filtrado[colunas_exibicao].to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
                     st.download_button(
                         label="🎯 Colunas Selecionadas",
-                        data=csv_selecionado,
+                        data=cselecionado,
                         file_name=f"colunas_selecionadas_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                         mime="text/csv",
                         use_container_width=True
