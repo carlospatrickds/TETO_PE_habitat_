@@ -3,8 +3,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import io
-import tempfile
-import os
+import unicodedata
 
 # Configuração da página
 st.set_page_config(
@@ -17,24 +16,146 @@ st.set_page_config(
 st.title("🏘️ Sistema de Consulta - Escuta de Comunidades")
 st.markdown("---")
 
+# Função para normalizar texto (remover acentos e converter para minúsculas)
+def normalizar_texto(texto):
+    """Remove acentos e converte para minúsculas para busca insensitive"""
+    if pd.isna(texto):
+        return ""
+    texto = str(texto)
+    # Remove acentos
+    texto = unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('ASCII')
+    return texto.lower().strip()
+
 # Função para criar label descritivo das colunas
-def criar_label_coluna(nome_coluna, dados_coluna, max_chars=30):
+def criar_label_coluna(nome_coluna, dados_coluna, mostrar_numero_coluna=False, numero_coluna=None, max_chars=30):
     """Cria um label descritivo com nome da coluna e amostra de valores"""
     # Nome da coluna (truncado se muito longo)
     nome_display = nome_coluna if len(nome_coluna) <= max_chars else nome_coluna[:max_chars-3] + "..."
     
-    # Amostra de valores não vazios
+    # Adicionar número da coluna se solicitado
+    if mostrar_numero_coluna and numero_coluna is not None:
+        prefixo = f"Col.{numero_coluna+1:02d} │ "
+    else:
+        prefixo = ""
+    
     valores_nao_vazios = dados_coluna.dropna().unique()
     if len(valores_nao_vazios) > 0:
-        # Pegar os primeiros 2-3 valores como amostra
         amostra_valores = [str(x) for x in valores_nao_vazios[:3] if str(x) not in ['', 'nan', 'NaN']]
         if amostra_valores:
             amostra_text = ", ".join(amostra_valores)
             if len(amostra_text) > 25:
                 amostra_text = amostra_text[:22] + "..."
-            return f"{nome_display} │ 📊 {amostra_text}"
+            return f"{prefixo}{nome_display} │ 📊 {amostra_text}"
     
-    return f"{nome_display} │ 📝 {len(dados_coluna.dropna())} valores"
+    return f"{prefixo}{nome_display} │ 📝 {len(dados_coluna.dropna())} valores"
+
+# Função para buscar valores similares
+def encontrar_valores_similares(valor_busca, lista_valores, limite=5):
+    """Encontra valores similares na lista (busca case insensitive e sem acentos)"""
+    if not valor_busca:
+        return []
+    
+    valor_busca_normalizado = normalizar_texto(valor_busca)
+    similares = []
+    
+    for valor in lista_valores:
+        if valor_busca_normalizado in normalizar_texto(valor):
+            similares.append(valor)
+            if len(similares) >= limite:
+                break
+    
+    return similares
+
+# Guia de instruções
+with st.expander("📚 GUIA DE INSTRUÇÕES - Como usar esta ferramenta", expanded=False):
+    tab_instrucoes, tab_exemplos, tab_dicas = st.tabs(["📖 Instruções", "🎯 Exemplos Práticos", "💡 Dicas Avançadas"])
+    
+    with tab_instrucoes:
+        st.markdown("""
+        ## 🎯 **COMO USAR ESTA FERRAMENTA**
+        
+        ### **1. 📤 CARREGAR PLANILHA**
+        - Faça upload de qualquer arquivo Excel (.xlsx)
+        - A planilha será processada automaticamente
+        - Colunas vazias serão removidas
+        
+        ### **2. 🔍 CONFIGURAR FILTROS**
+        - **Selecione colunas para filtrar**: Escolha até 6 colunas na barra lateral
+        - **Use a busca inteligente**: Digite parte do texto para encontrar valores
+        - **Seleção múltipla**: Escolha vários valores para cada filtro
+        - **Filtros numéricos**: Use sliders para faixas de valores
+        
+        ### **3. 📊 VISUALIZAR RESULTADOS**
+        - **Selecione colunas para exibir**: Escolha quais colunas ver na tabela
+        - **Navegue pelas páginas**: Use paginação para muitos resultados
+        - **Veja o resumo**: Confira estatísticas na barra lateral
+        
+        ### **4. 📤 EXPORTAR DADOS**
+        - **Excel completo**: Com metadados da consulta
+        - **CSV simples**: Para usar em outros programas
+        - **Colunas selecionadas**: Apenas as colunas que você escolheu
+        """)
+    
+    with tab_exemplos:
+        st.markdown("""
+        ## 🎯 **EXEMPLOS PRÁTICOS**
+        
+        ### **🔍 EXEMPLO 1: Filtrar por Comunidade**
+        ```
+        1. Selecione a coluna "Comunidade" nos filtros
+        2. Digite "aliança" no campo de busca
+        3. Selecione TODAS as variações:
+           - "Vila Aliança"
+           - "vila alianca" 
+           - "Vila Alianca"
+        4. Aplique o filtro
+        ```
+        
+        ### **🔢 EXEMPLO 2: Filtrar por Idade e Problema**
+        ```
+        1. Selecione "Idade" e "Problema_reportado"
+        2. Em "Idade": ajuste para 18-60 anos
+        3. Em "Problema_reportado": busque "água" e selecione:
+           - "Falta de água"
+           - "Água contaminada"
+           - "Falta d'agua"
+        4. Veja os resultados combinados
+        ```
+        
+        ### **📊 EXEMPLO 3: Exportar Dados Específicos**
+        ```
+        1. Aplique seus filtros
+        2. Selecione apenas colunas importantes:
+           - "Nome", "Comunidade", "Problema", "Data"
+        3. Exporte como "Colunas Selecionadas"
+        4. Use no Excel ou outro software
+        ```
+        """)
+    
+    with tab_dicas:
+        st.markdown("""
+        ## 💡 **DICAS AVANÇADAS**
+        
+        ### **🎯 BUSCA INTELIGENTE**
+        - **Ignora acentos**: "alem" encontra "Além", "Alem", "Alêm"
+        - **Case insensitive**: "NORTE" = "norte" = "Norte"
+        - **Busca parcial**: "centro" encontra "Centro", "Centro-Sul"
+        
+        ### **📈 NUMERAÇÃO CORRETA**
+        - **Linhas**: A contagem inicia na linha 2 (dados reais)
+        - **Cabeçalho**: Linha 1 no Excel = Cabeçalhos no sistema
+        - **Colunas**: Opção para mostrar números (Col.01, Col.02, etc.)
+        
+        ### **🚀 PERFORMANCE**
+        - **Limite de 6 filtros**: Para não sobrecarregar
+        - **Paginação**: Navegue por lotes de 20 registros
+        - **Exportação seletiva**: Baixe apenas o necessário
+        
+        ### **🔧 SOLUÇÃO DE PROBLEMAS**
+        - **Valores não aparecem**: Verifique se a coluna tem dados
+        - **Busca não funciona**: Tente termos mais simples
+        - **Exportação falha**: Tente formato CSV
+        """)
 
 # Upload do arquivo
 uploaded_file = st.file_uploader("📤 Envie sua planilha Excel", type=["xlsx"])
@@ -54,66 +175,104 @@ if uploaded_file:
         
         st.success(f"✅ Planilha carregada com sucesso! {len(df)} registros e {len(df.columns)} colunas encontradas.")
         
+        # Configuração opcional - mostrar números das colunas
+        st.sidebar.header("⚙️ Configurações")
+        mostrar_numeros_colunas = st.sidebar.checkbox(
+            "Mostrar números das colunas", 
+            value=True,
+            help="Exibe 'Col.01', 'Col.02' ao lado dos nomes das colunas"
+        )
+        
         # Sidebar para filtros
         st.sidebar.header("🔍 Filtros de Consulta")
         
         # Criar labels descritivos para todas as colunas
         colunas_com_labels = []
-        for coluna in df.columns:
-            label = criar_label_coluna(coluna, df[coluna])
-            colunas_com_labels.append((coluna, label))
+        for i, coluna in enumerate(df.columns):
+            label = criar_label_coluna(coluna, df[coluna], mostrar_numeros_colunas, i)
+            colunas_com_labels.append((coluna, label, i))  # Agora inclui o índice
         
         # Selecionar colunas para filtro
         colunas_filtro_selecionadas = st.sidebar.multiselect(
             "Selecione as colunas para filtrar:",
-            options=[label for _, label in colunas_com_labels],
-            default=[label for _, label in colunas_com_labels[:3]] if len(colunas_com_labels) >= 3 else [label for _, label in colunas_com_labels],
+            options=[label for _, label, _ in colunas_com_labels],
+            default=[label for _, label, _ in colunas_com_labels[:3]] if len(colunas_com_labels) >= 3 else [label for _, label, _ in colunas_com_labels],
             help="Cada coluna selecionada mostrará um filtro específico abaixo",
             max_selections=6
         )
         
         # Mapear labels de volta para nomes das colunas
-        label_para_coluna = {label: coluna for coluna, label in colunas_com_labels}
+        label_para_coluna = {label: (coluna, idx) for coluna, label, idx in colunas_com_labels}
         colunas_filtro = [label_para_coluna[label] for label in colunas_filtro_selecionadas]
         
         filtros_aplicados = {}
         
         # Criar filtros dinâmicos para cada coluna selecionada
-        for coluna in colunas_filtro:
+        for coluna_info in colunas_filtro:
+            coluna, idx_coluna = coluna_info
+            
             if coluna in df.columns:
-                st.sidebar.markdown(f"**🎯 Filtro: {coluna}**")
+                # Mostrar número da coluna no título do filtro
+                if mostrar_numeros_colunas:
+                    titulo_filtro = f"**🎯 Filtro Col.{idx_coluna+1:02d}: {coluna}**"
+                else:
+                    titulo_filtro = f"**🎯 Filtro: {coluna}**"
+                
+                st.sidebar.markdown(titulo_filtro)
                 
                 # Verificar se a coluna tem dados
                 if len(df[coluna].dropna()) > 0:
-                    # Para colunas textuais
+                    # Para colunas textuais - SEMPRE permitir seleção múltipla
                     if df[coluna].dtype in ['object', 'string']:
                         valores_unicos = df[coluna].dropna().unique()
                         valores_unicos = [str(x) for x in valores_unicos if str(x) not in ['', 'nan', 'NaN']]
                         
                         if len(valores_unicos) > 0:
-                            if len(valores_unicos) <= 20:  # Se poucos valores, mostra todos
-                                selecao = st.sidebar.multiselect(
-                                    f"Valores em **{coluna}**:",
-                                    options=valores_unicos,
-                                    default=[],
-                                    help=f"Selecione os valores para filtrar em {coluna}",
-                                    key=f"filtro_{coluna}"
-                                )
-                            else:  # Muitos valores, usar search com selectbox
-                                st.sidebar.info(f"📋 {len(valores_unicos)} valores únicos encontrados")
-                                valor_padrao = st.sidebar.selectbox(
-                                    f"Buscar em **{coluna}**:",
-                                    options=[""] + sorted(valores_unicos),
-                                    help=f"Selecione um valor para filtrar em {coluna}",
-                                    key=f"busca_{coluna}"
-                                )
-                                selecao = [valor_padrao] if valor_padrao else []
+                            # Sistema de busca + seleção múltipla
+                            st.sidebar.write("**🔍 Buscar valores:**")
+                            
+                            # Campo de busca
+                            busca_texto = st.sidebar.text_input(
+                                f"Digite para buscar:",
+                                placeholder="Ex: vila, centro, norte...",
+                                key=f"busca_{coluna}",
+                                help="Busque valores por partes do texto (ignora acentos e maiúsculas)"
+                            )
+                            
+                            # Encontrar valores similares baseado na busca
+                            valores_disponiveis = sorted(valores_unicos)
+                            
+                            if busca_texto:
+                                valores_similares = encontrar_valores_similares(busca_texto, valores_unicos)
+                                if valores_similares:
+                                    st.sidebar.success(f"🎯 {len(valores_similares)} valor(es) encontrado(s)")
+                                    valores_disponiveis = valores_similares
+                                else:
+                                    st.sidebar.warning("❌ Nenhum valor encontrado")
+                                    valores_disponiveis = []
+                            
+                            # Seleção múltipla sempre disponível
+                            selecao = st.sidebar.multiselect(
+                                f"**Selecione os valores:**",
+                                options=valores_disponiveis,
+                                default=[],
+                                help="💡 **DICA:** Selecione múltiplas variações (com/sem acento, maiúsculas/minúsculas)",
+                                key=f"multiselect_{coluna}"
+                            )
+                            
+                            # Sugestões automáticas para valores comuns
+                            if not busca_texto and not selecao:
+                                # Mostrar valores mais frequentes como sugestão
+                                valores_frequentes = df[coluna].value_counts().head(3).index.tolist()
+                                if valores_frequentes:
+                                    st.sidebar.caption(f"💡 Sugestões: {', '.join(map(str, valores_frequentes))}")
                             
                             if selecao:
                                 filtros_aplicados[coluna] = selecao
-                            else:
-                                # Mostrar estatística rápida
-                                st.sidebar.caption(f"💡 {len(valores_unicos)} valores únicos")
+                                st.sidebar.success(f"✅ {len(selecao)} valor(es) selecionado(s)")
+                            
+                            # Estatísticas
+                            st.sidebar.caption(f"📊 {len(valores_unicos)} valores únicos encontrados")
                     
                     # Para colunas numéricas
                     elif np.issubdtype(df[coluna].dtype, np.number):
@@ -122,25 +281,25 @@ if uploaded_file:
                         
                         if min_val != max_val:
                             faixa = st.sidebar.slider(
-                                f"Faixa de valores em **{coluna}**:",
+                                f"Faixa de valores:",
                                 min_value=min_val,
                                 max_value=max_val,
                                 value=(min_val, max_val),
-                                help=f"Selecione a faixa de valores para {coluna}",
+                                help=f"Selecione a faixa de valores",
                                 key=f"faixa_{coluna}"
                             )
                             filtros_aplicados[coluna] = faixa
                             st.sidebar.caption(f"📈 Valores de {min_val:.2f} a {max_val:.2f}")
                     
                     # Para colunas booleanas ou com poucos valores únicos
-                    elif df[coluna].nunique() <= 5:
+                    elif df[coluna].nunique() <= 10:
                         valores_unicos = df[coluna].dropna().unique()
                         selecao = st.sidebar.multiselect(
-                            f"Valores em **{coluna}**:",
+                            f"Valores:",
                             options=valores_unicos,
                             default=[],
-                            help=f"Selecione os valores para {coluna}",
-                            key=f"bool_{coluna}"
+                            help=f"Selecione múltiplos valores",
+                            key=f"multiselect_small_{coluna}"
                         )
                         if selecao:
                             filtros_aplicados[coluna] = selecao
@@ -151,16 +310,24 @@ if uploaded_file:
                 st.sidebar.markdown("---")
         
         # Botão para limpar filtros
-        if st.sidebar.button("🧹 Limpar Todos os Filtros", use_container_width=True):
-            filtros_aplicados = {}
-            st.rerun()
+        col_btn1, col_btn2 = st.sidebar.columns(2)
+        with col_btn1:
+            if st.button("🧹 Limpar Filtros", use_container_width=True):
+                filtros_aplicados = {}
+                st.rerun()
+        with col_btn2:
+            if st.button("🔄 Recarregar", use_container_width=True):
+                st.rerun()
         
         # Aplicar filtros
         df_filtrado = df.copy()
         
         for coluna, filtro in filtros_aplicados.items():
             if isinstance(filtro, list):  # Filtro de múltiplos valores
-                mask = df_filtrado[coluna].astype(str).isin([str(x) for x in filtro])
+                # Converter tudo para string para comparação insensitive
+                mask = df_filtrado[coluna].astype(str).apply(lambda x: normalizar_texto(x)).isin(
+                    [normalizar_texto(str(x)) for x in filtro]
+                )
                 df_filtrado = df_filtrado[mask]
             elif isinstance(filtro, tuple):  # Filtro de faixa numérica
                 mask = (df_filtrado[coluna] >= filtro[0]) & (df_filtrado[coluna] <= filtro[1])
@@ -187,18 +354,18 @@ if uploaded_file:
                 # Selecionar colunas para exibição com labels
                 colunas_exibicao_labels = st.multiselect(
                     "Selecione as colunas para exibir:",
-                    options=[label for _, label in colunas_com_labels],
-                    default=[label for _, label in colunas_com_labels[:8]] if len(colunas_com_labels) >= 8 else [label for _, label in colunas_com_labels],
+                    options=[label for _, label, _ in colunas_com_labels],
+                    default=[label for _, label, _ in colunas_com_labels[:8]] if len(colunas_com_labels) >= 8 else [label for _, label, _ in colunas_com_labels],
                     help="Escolha quais colunas mostrar na tabela"
                 )
                 
                 # Converter labels de volta para nomes das colunas
-                colunas_exibicao = [label_para_coluna[label] for label in colunas_exibicao_labels]
+                colunas_exibicao = [label_para_coluna[label][0] for label in colunas_exibicao_labels]
                 
                 if colunas_exibicao:
                     df_exibicao = df_filtrado[colunas_exibicao]
                     
-                    # Paginação
+                    # Paginação com numeração correta (linha 2 = primeiro dado real)
                     items_per_page = 20
                     total_pages = max(1, (len(df_exibicao) - 1) // items_per_page + 1)
                     
@@ -215,14 +382,19 @@ if uploaded_file:
                     start_idx = (page_number - 1) * items_per_page
                     end_idx = start_idx + items_per_page
                     
-                    # Mostrar dataframe com os nomes originais das colunas
+                    # Mostrar dataframe com numeração correta
                     st.dataframe(
                         df_exibicao.iloc[start_idx:end_idx],
                         use_container_width=True,
                         height=500
                     )
                     
-                    st.caption(f"Mostrando registros {start_idx + 1} a {min(end_idx, len(df_exibicao))} de {len(df_exibicao)}")
+                    # Mostrar numeração correta das linhas (considerando cabeçalho Excel)
+                    linha_inicio_real = start_idx + 2  # +2 porque linha 1 Excel = cabeçalho, linha 2 = primeiro dado
+                    linha_fim_real = min(end_idx, len(df_exibicao)) + 1  # +1 para compensar
+                    
+                    st.caption(f"📋 Mostrando registros {start_idx + 1} a {min(end_idx, len(df_exibicao))} de {len(df_exibicao)} | "
+                             f"📄 Linhas Excel: {linha_inicio_real} a {linha_fim_real}")
                 else:
                     st.info("📝 Selecione pelo menos uma coluna para exibir.")
             else:
@@ -240,7 +412,7 @@ if uploaded_file:
                 st.write("**🎯 Filtros ativos:**")
                 for coluna, filtro in filtros_aplicados.items():
                     if isinstance(filtro, list):
-                        valores = ", ".join(map(str, filtro[:2]))  # Mostra apenas os 2 primeiros
+                        valores = ", ".join(map(str, filtro[:2]))
                         if len(filtro) > 2:
                             valores += f"... (+{len(filtro)-2})"
                         st.write(f"• **{coluna}:** {valores}")
@@ -278,20 +450,29 @@ if uploaded_file:
                     df_filtrado.to_excel(writer, index=False, sheet_name='Dados_Filtrados')
                     
                     # Adicionar uma aba com metadados
+                    filtros_texto = []
+                    for coluna, filtro in filtros_aplicados.items():
+                        if isinstance(filtro, list):
+                            filtros_texto.append(f"{coluna}: {', '.join(map(str, filtro))}")
+                        else:
+                            filtros_texto.append(f"{coluna}: {filtro[0]} a {filtro[1]}")
+                    
                     metadata = pd.DataFrame({
                         'Parâmetro': [
                             'Data da consulta', 
                             'Total de registros', 
                             'Registros filtrados',
                             'Filtros aplicados', 
-                            'Arquivo original'
+                            'Arquivo original',
+                            'Detalhes dos Filtros'
                         ],
                         'Valor': [
                             datetime.now().strftime('%d/%m/%Y %H:%M'),
                             len(df),
                             len(df_filtrado),
                             len(filtros_aplicados),
-                            uploaded_file.name
+                            uploaded_file.name,
+                            '; '.join(filtros_texto) if filtros_texto else 'Nenhum'
                         ]
                     })
                     metadata.to_excel(writer, index=False, sheet_name='Metadados')
@@ -326,77 +507,15 @@ if uploaded_file:
                         mime="text/csv",
                         use_container_width=True
                     )
-        
-        # Informações adicionais da planilha
-        with st.expander("🔍 Explorar Colunas da Planilha"):
-            tab1, tab2 = st.tabs(["📋 Lista de Colunas", "📊 Estatísticas"])
-            
-            with tab1:
-                st.write("**Todas as colunas disponíveis:**")
-                
-                # Agrupar colunas por tipo
-                colunas_texto = df.select_dtypes(include=['object']).columns.tolist()
-                colunas_numericas = df.select_dtypes(include=[np.number]).columns.tolist()
-                colunas_outras = [col for col in df.columns if col not in colunas_texto + colunas_numericas]
-                
-                if colunas_texto:
-                    st.write("#### 📝 Colunas Textuais:")
-                    for coluna in colunas_texto:
-                        valores_unicos = df[coluna].dropna().unique()
-                        amostra = ", ".join([str(x) for x in valores_unicos[:2] if str(x) not in ['', 'nan']])
-                        if len(valores_unicos) > 2:
-                            amostra += f"... (+{len(valores_unicos)-2})"
-                        st.write(f"- **{coluna}:** {amostra}")
-                
-                if colunas_numericas:
-                    st.write("#### 🔢 Colunas Numéricas:")
-                    for coluna in colunas_numericas:
-                        min_val = df[coluna].min()
-                        max_val = df[coluna].max()
-                        st.write(f"- **{coluna}:** {min_val:.2f} a {max_val:.2f}")
-                
-                if colunas_outras:
-                    st.write("#### 🔧 Outras Colunas:")
-                    for coluna in colunas_outras:
-                        st.write(f"- **{coluna}**")
-            
-            with tab2:
-                col_stat1, col_stat2, col_stat3 = st.columns(3)
-                with col_stat1:
-                    st.metric("Total Colunas", len(df.columns))
-                with col_stat2:
-                    st.metric("Colunas Texto", len(colunas_texto))
-                with col_stat3:
-                    st.metric("Colunas Númericas", len(colunas_numericas))
-                
-                st.write("**Amostra dos dados:**")
-                st.dataframe(df.head(3), use_container_width=True)
-    
+
     except Exception as e:
         st.error(f"❌ Erro ao processar o arquivo: {str(e)}")
         st.info("💡 Verifique se o arquivo é um Excel válido e não está corrompido.")
 
 else:
     st.info("👆 Por favor, envie um arquivo Excel para começar a consulta.")
-    
-    # Instruções de uso
-    with st.expander("📖 Como usar esta ferramenta"):
-        st.markdown("""
-        ## 🎯 **Nova Funcionalidade: Labels Descritivos**
-        
-        Agora cada coluna mostra:
-        - **📝 Nome da coluna**
-        - **📊 Amostra dos valores** contidos nela
-        - **🔢 Estatísticas** rápidas
-        
-        ### 💡 **Exemplo:**
-        - `Comunidade │ 📊 Vila Aliança, Morro doce...`
-        - `Idade │ 📈 18.0 a 85.0`
-        - `Problemas │ 📊 Falta de água, Esgoto...`
-        
-        Isso ajuda a identificar rapidamente qual coluna usar para cada filtro!
-        """)
 
 # Footer
 st.markdown("---")
-st.caption(f"🕐 Sistema de Consulta - Atualizado em {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+st.caption(f"🕐 Sistema de Consulta - Atualizado em {datetime.now().strftime('%d/%m/%Y %H:%M')} | "
+           f"📊 Numeração de linhas compatível com Excel (Linha 1 = Cabeçalhos)")
